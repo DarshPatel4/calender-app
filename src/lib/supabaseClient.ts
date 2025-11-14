@@ -20,17 +20,28 @@ const deriveUrlFromConnectionString = (conn?: string): string | undefined => {
 const supabaseUrl = envSupabaseUrl ?? deriveUrlFromConnectionString(connectionString);
 
 if (!supabaseUrl) {
-  throw new Error(
-    [
-      "Missing Supabase URL.",
-      "Set VITE_SUPABASE_URL to something like https://<project>.supabase.co,",
-      "or provide VITE_SUPABASE_CONNECTION_STRING so it can be inferred automatically.",
-    ].join(" ")
-  );
+  const errorMessage = [
+    "Missing Supabase URL.",
+    "Set VITE_SUPABASE_URL to something like https://<project>.supabase.co,",
+    "or provide VITE_SUPABASE_CONNECTION_STRING so it can be inferred automatically.",
+  ].join(" ");
+  console.error("❌ Supabase Configuration Error:", errorMessage);
+  throw new Error(errorMessage);
 }
 
 if (!supabaseAnonKey) {
-  throw new Error("Missing VITE_SUPABASE_ANON_KEY environment variable.");
+  const errorMessage = "Missing VITE_SUPABASE_ANON_KEY environment variable.";
+  console.error("❌ Supabase Configuration Error:", errorMessage);
+  throw new Error(errorMessage);
+}
+
+// Log configuration in development (not in production for security)
+if (import.meta.env.DEV) {
+  console.log("✅ Supabase configured:", {
+    url: supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+    keyLength: supabaseAnonKey?.length || 0,
+  });
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

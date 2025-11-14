@@ -9,6 +9,7 @@ import CalendarSidebar from "@/components/CalendarSidebar";
 import { Input } from "@/components/ui/input";
 import AddTaskModal from "@/components/AddTaskModal";
 import AppointmentScheduleModal from "@/components/AppointmentScheduleModal";
+import { toast } from "sonner";
 
 export interface CalendarEvent {
   id: string;
@@ -92,6 +93,9 @@ const Index = () => {
 
     if (error) {
       console.error("Failed to load events:", error);
+      toast.error("Failed to load events", {
+        description: error.message || "Please check your connection and try again.",
+      });
       setEvents([]);
       return [];
     }
@@ -156,43 +160,80 @@ const Index = () => {
       const bookingTime = `${date}T00:00:00Z`;
 
       setIsSavingEvent(true);
-      const { data, error } = await supabase
-        .from("bookings")
-        .insert({ 
-          product_name: title, 
-          summary: description, 
-          booking_time: bookingTime, 
-          meet_link: meetingLink || null 
-        })
-        .select()
-        .single();
+      
+      try {
+        const { data, error } = await supabase
+          .from("bookings")
+          .insert({ 
+            product_name: title, 
+            summary: description, 
+            booking_time: bookingTime, 
+            meet_link: meetingLink || null 
+          })
+          .select()
+          .single();
 
-      setIsSavingEvent(false);
+        setIsSavingEvent(false);
 
-      if (error) {
-        console.error("Failed to save event:", error);
+        if (error) {
+          console.error("Failed to save event:", error);
+          
+          // Provide user-friendly error messages
+          let errorMessage = "Failed to save event. ";
+          if (error.code === "42501" || error.message.includes("permission") || error.message.includes("policy")) {
+            errorMessage += "Permission denied. Please check your Supabase Row Level Security (RLS) policies.";
+          } else if (error.code === "PGRST116" || error.message.includes("JWT")) {
+            errorMessage += "Authentication error. Please check your Supabase credentials.";
+          } else if (error.message.includes("network") || error.message.includes("fetch")) {
+            errorMessage += "Network error. Please check your internet connection.";
+          } else {
+            errorMessage += error.message || "Unknown error occurred.";
+          }
+          
+          toast.error("Error Saving Event", {
+            description: errorMessage,
+            duration: 5000,
+          });
+          return null;
+        }
+
+        if (!data) {
+          toast.error("Error Saving Event", {
+            description: "No data returned from server.",
+          });
+          return null;
+        }
+
+        const normalized = normalizeEvents([data as SupabaseBookingRow])[0];
+        setEvents((prev) => [...prev, normalized]);
+        toast.success("Event saved successfully!");
+        return normalized;
+      } catch (err) {
+        setIsSavingEvent(false);
+        console.error("Unexpected error saving event:", err);
+        toast.error("Error Saving Event", {
+          description: err instanceof Error ? err.message : "An unexpected error occurred.",
+        });
         return null;
       }
-
-      if (!data) {
-        return null;
-      }
-
-      const normalized = normalizeEvents([data as SupabaseBookingRow])[0];
-      setEvents((prev) => [...prev, normalized]);
-      return normalized;
     },
     []
   );
 
   const handleAddEvent = async (title: string, description: string) => {
-    if (!selectedDate) return;
+    if (!selectedDate) {
+      toast.error("No date selected", {
+        description: "Please select a date for the event.",
+      });
+      return;
+    }
     const dateString = formatDate(selectedDate);
     const newEvent = await saveEvent(title, description, dateString);
     if (newEvent) {
       setIsAddModalOpen(false);
       setSelectedDate(null);
     }
+    // Error handling is done in saveEvent, so we don't need to show another error here
   };
 
   const renderEvents = useCallback(
