@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Menu, Search, CircleUserRound } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Menu, Search, CircleUserRound, LogOut } from "lucide-react";
 import CalendarHeader from "@/components/CalendarHeader";
 import CalendarGrid from "@/components/CalendarGrid";
 import AddEventModal from "@/components/AddEventModal";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import AddTaskModal from "@/components/AddTaskModal";
 import AppointmentScheduleModal from "@/components/AppointmentScheduleModal";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 export interface CalendarEvent {
   id: string;
@@ -66,6 +68,7 @@ const normalizeEvents = (rows: SupabaseBookingRow[]): CalendarEvent[] =>
 const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const Index = () => {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -77,6 +80,19 @@ const Index = () => {
   const [appointments, setAppointments] = useState<AppointmentSchedule[]>([]);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [teamMember, setTeamMember] = useState<string | null>(null);
+
+  // Load team member from localStorage on mount
+  useEffect(() => {
+    const storedTeamMember = localStorage.getItem("team_member");
+    setTeamMember(storedTeamMember);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("team_member");
+    toast.success("Logged out successfully");
+    navigate("/login");
+  };
 
   const formatDate = useCallback((date: Date): string => {
     const year = date.getFullYear();
@@ -86,10 +102,29 @@ const Index = () => {
   }, []);
 
   const loadEvents = useCallback(async (): Promise<CalendarEvent[]> => {
-    const { data, error } = await supabase
+    // Get team member from localStorage
+    const teamMember = localStorage.getItem("team_member");
+
+    if (!teamMember) {
+      console.error("No team member found in localStorage");
+      setEvents([]);
+      return [];
+    }
+
+    // Build query based on role
+    let query = supabase
       .from("bookings")
-      .select("id, product_name, summary, booking_time, meet_link")
-      .order("booking_time", { ascending: true });
+      .select("id, product_name, summary, booking_time, meet_link");
+
+    // If not admin, filter by team_member
+    if (teamMember.toLowerCase() !== "admin") {
+      query = query.eq("team_member", teamMember);
+    }
+
+    // Order by booking_time
+    query = query.order("booking_time", { ascending: true });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Failed to load events:", error);
@@ -153,11 +188,22 @@ const Index = () => {
         typeof document !== "undefined"
           ? (document.getElementById("eventMeetingLink") as HTMLInputElement | null)
           : null;
-      const meetingLink = meetingInput?.value?.trim() ?? "";
+      // Convert empty string to null to avoid unique constraint violations
+      const meetingLinkRaw = meetingInput?.value?.trim() ?? "";
+      const meetingLink = meetingLinkRaw === "" ? null : meetingLinkRaw;
 
       // Convert date string (YYYY-MM-DD) to TIMESTAMPTZ format
       // Append time 00:00:00 and timezone to make it a proper timestamp
       const bookingTime = `${date}T00:00:00Z`;
+
+      // Get team member from localStorage
+      const teamMember = localStorage.getItem("team_member");
+      if (!teamMember) {
+        toast.error("Authentication error", {
+          description: "Please log in again.",
+        });
+        return null;
+      }
 
       setIsSavingEvent(true);
       
@@ -168,7 +214,8 @@ const Index = () => {
             product_name: title, 
             summary: description, 
             booking_time: bookingTime, 
-            meet_link: meetingLink || null 
+            meet_link: meetingLink,
+            team_member: teamMember
           })
           .select()
           .single();
@@ -186,6 +233,8 @@ const Index = () => {
             errorMessage += "Authentication error. Please check your Supabase credentials.";
           } else if (error.message.includes("network") || error.message.includes("fetch")) {
             errorMessage += "Network error. Please check your internet connection.";
+          } else if (error.code === "23505" || error.message.includes("duplicate key") || error.message.includes("unique constraint")) {
+            errorMessage += "This meeting link is already in use. Please use a different link or leave it empty.";
           } else {
             errorMessage += error.message || "Unknown error occurred.";
           }
@@ -298,12 +347,27 @@ const Index = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {teamMember && (
+              <span className="hidden text-sm text-[#5f6368] md:inline-flex">
+                {teamMember}
+              </span>
+            )}
             <button
               type="button"
               className="hidden rounded-full border border-[#d2d6e3] px-4 py-2 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] md:inline-flex"
             >
               Support
             </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
             <CircleUserRound className="h-9 w-9 text-[#5f6368]" />
           </div>
         </header>
