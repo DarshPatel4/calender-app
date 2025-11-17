@@ -4,6 +4,7 @@ import { Menu, Search, CircleUserRound, LogOut, Calendar as CalendarIcon } from 
 import CalendarHeader from "@/components/CalendarHeader";
 import CalendarGrid from "@/components/CalendarGrid";
 import DayView from "@/components/DayView";
+import UpcomingEventsView from "@/components/UpcomingEventsView";
 import AddEventModal from "@/components/AddEventModal";
 import EventDetailsModal from "@/components/EventDetailsModal";
 import { supabase } from "@/lib/supabaseClient";
@@ -88,7 +89,7 @@ const normalizeEvents = (rows: SupabaseBookingRow[]): CalendarEvent[] =>
 
 const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-type ViewMode = "month" | "day";
+type ViewMode = "month" | "day" | "upcoming";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -362,6 +363,10 @@ const Index = () => {
     loadDayViewEvents(selectedDateObj);
   };
 
+  const handleViewUpcomingEvents = () => {
+    setViewMode("upcoming");
+  };
+
   // Load day view events when dayViewDate changes
   useEffect(() => {
     if (viewMode === "day") {
@@ -382,14 +387,10 @@ const Index = () => {
   };
 
   const saveEvent = useCallback(
-    async (title: string, description: string, date: string): Promise<CalendarEvent | null> => {
-      const meetingInput =
-        typeof document !== "undefined"
-          ? (document.getElementById("eventMeetingLink") as HTMLInputElement | null)
-          : null;
+    async (title: string, description: string, date: string, meetingLink?: string): Promise<CalendarEvent | null> => {
       // Convert empty string to null to avoid unique constraint violations
-      const meetingLinkRaw = meetingInput?.value?.trim() ?? "";
-      const meetingLink = meetingLinkRaw === "" ? null : meetingLinkRaw;
+      const meetingLinkRaw = meetingLink?.trim() ?? "";
+      const meetingLinkValue = meetingLinkRaw === "" ? null : meetingLinkRaw;
 
       // Convert date string (YYYY-MM-DD) to TIMESTAMPTZ format
       // Append time 00:00:00 and timezone to make it a proper timestamp
@@ -413,7 +414,7 @@ const Index = () => {
             product_name: title, 
             summary: description, 
             booking_time: bookingTime, 
-            meet_link: meetingLink,
+            meet_link: meetingLinkValue,
             team_member: teamMember
           })
           .select()
@@ -468,7 +469,7 @@ const Index = () => {
     []
   );
 
-  const handleAddEvent = async (title: string, description: string) => {
+  const handleAddEvent = async (title: string, description: string, meetingLink?: string) => {
     if (!selectedDate) {
       toast.error("No date selected", {
         description: "Please select a date for the event.",
@@ -476,7 +477,7 @@ const Index = () => {
       return;
     }
     const dateString = formatDate(selectedDate);
-    const newEvent = await saveEvent(title, description, dateString);
+    const newEvent = await saveEvent(title, description, dateString, meetingLink);
     if (newEvent) {
       setIsAddModalOpen(false);
       setSelectedDate(null);
@@ -600,10 +601,13 @@ const Index = () => {
             onSelectDate={handleSidebarDateSelect}
             onCreate={handleCreateAction}
             onEventClick={showEventDetails}
+            teamMemberColors={teamMemberColors}
+            isAdmin={isAdmin}
+            onViewUpcoming={handleViewUpcomingEvents}
           />
 
           <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
-            {viewMode === "month" ? (
+            {viewMode === "month" && (
               <>
                 <div className="px-4 py-6 sm:px-6 lg:px-10">
                   <CalendarHeader
@@ -624,7 +628,9 @@ const Index = () => {
                   />
                 </div>
               </>
-            ) : (
+            )}
+
+            {viewMode === "day" && (
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-[#e0e3eb] bg-white">
                   <div className="flex items-center gap-4">
@@ -686,6 +692,20 @@ const Index = () => {
                   />
                 </div>
               </div>
+            )}
+
+            {viewMode === "upcoming" && (
+              <UpcomingEventsView
+                events={events}
+                isAdmin={isAdmin}
+                teamMemberColors={teamMemberColors}
+                availableTeamMembers={availableTeamMembers}
+                selectedTeamMemberFilter={selectedTeamMemberFilter}
+                onTeamMemberFilterChange={setSelectedTeamMemberFilter}
+                onBackToCalendar={() => setViewMode("month")}
+                onEventClick={showEventDetails}
+                onCreateEvent={() => handleCreateAction("event")}
+              />
             )}
           </main>
         </div>

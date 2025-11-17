@@ -257,3 +257,4 @@ calender-app/
 ---
 
 **Need Help?** Check Vercel's [support documentation](https://vercel.com/docs/support) or [community forums](https://github.com/vercel/vercel/discussions).
+
